@@ -4,6 +4,12 @@
 
 ![screenshot](https://img.shields.io/badge/纯前端-无需后端-2563eb) ![license](https://img.shields.io/badge/license-MIT-green)
 
+## 在线使用
+
+**https://000221.github.io/invoice-pdf-tool/**
+
+打开即用，不需要下载安装。所有处理都在你的浏览器里完成，发票文件不会上传到任何服务器。
+
 ## 为什么做这个
 
 从邮箱下载的电子发票 PDF 通常是 **A4 页面，但实际内容只占上半部分**（标准票面约 210×140mm）。直接打印，一张 A4 只印一张票，纸张浪费一半；想省纸又得手动 PS 排版。
@@ -43,7 +49,17 @@ JPG / PNG / WebP 按顺序排版成 PDF。
 
 ## 使用
 
-直接双击 `index.html` 即可，无需安装。
+### 方式一：在线使用（推荐）
+
+直接打开 https://000221.github.io/invoice-pdf-tool/ ，无需安装。
+
+### 方式二：下载到本地
+
+```bash
+git clone git@github.com:000221/invoice-pdf-tool.git
+```
+
+或从 [Releases / 仓库首页](https://github.com/000221/invoice-pdf-tool) 下载 ZIP，解压后双击 `index.html` 即可，无需安装任何依赖。
 
 首次打开需要联网加载 PDF 引擎（约 3MB，来自 CDN），加载后本会话不再请求。
 
@@ -81,6 +97,14 @@ JPG / PNG / WebP 按顺序排版成 PDF。
 ## 浏览器支持
 
 Chrome / Edge / Firefox / Safari 近期版本。
+
+## 部署
+
+托管在 GitHub Pages，从 `gh-pages` 分支发布。推送到 `main` 后由 GitHub Actions 自动同步到 `gh-pages`，无需手动操作：
+
+```
+main  --(Actions: .github/workflows/deploy.yml)-->  gh-pages  -->  GitHub Pages
+```
 
 ## License
 
