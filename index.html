@@ -383,9 +383,14 @@ footer{text-align:center;font-size:12px;color:#a8b2c2;padding:30px 0 10px}
             </select>
           </div>
 
-          <div class="switch-row">
-            <span>打印裁切辅助线</span>
-            <label class="switch"><input type="checkbox" id="opt-cutline"><span></span></label>
+          <div class="field">
+            <label>裁切辅助线</label>
+            <select id="opt-cutline">
+              <option value="between" selected>仅合并之间（中间虚线）· 推荐</option>
+              <option value="cell">每张四边全框</option>
+              <option value="off">不打印</option>
+            </select>
+            <div class="hint">只在两张发票相接处画一条淡虚线，方便对折或裁开；单张占一页时不画线</div>
           </div>
 
           <button class="btn-primary" id="btn-build-inv">生成合并 PDF</button>
@@ -537,6 +542,14 @@ footer{text-align:center;font-size:12px;color:#a8b2c2;padding:30px 0 10px}
               <option value="0">无</option>
               <option value="4" selected>4 mm</option>
               <option value="8">8 mm</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>裁切辅助线</label>
+            <select id="opt-img-cutline">
+              <option value="off" selected>不打印</option>
+              <option value="between">仅合并之间（中间虚线）</option>
+              <option value="cell">每张四边全框</option>
             </select>
           </div>
           <button class="btn-primary" id="btn-build-img">生成 PDF</button>
@@ -872,6 +885,78 @@ function loadImageEl(url){
   });
 }
 
+/* ------------------------------------------------------------
+   裁切辅助线
+   mode: 'off' 不画 | 'between' 仅合并之间 | 'cell' 每张四边全框
+   ------------------------------------------------------------ */
+const CUT_LINE_RGB = [0.60, 0.65, 0.73];
+
+// 把 [0,n) 里满足 pred 的下标切成连续区段
+function rangeRuns(n, pred){
+  const out = [];
+  let start = -1;
+  for (let i = 0; i < n; i++){
+    if (pred(i)){
+      if (start < 0) start = i;
+    } else if (start >= 0){
+      out.push([start, i - 1]);
+      start = -1;
+    }
+  }
+  if (start >= 0) out.push([start, n - 1]);
+  return out;
+}
+
+function drawCutlines(page, o){
+  const mode = o.mode === true ? 'cell' : (o.mode || 'off');
+  if (mode !== 'between' && mode !== 'cell') return;
+
+  const { rgb } = window.PDFLib;
+  const color = rgb.apply(null, CUT_LINE_RGB);
+  const { layout, cellW, cellH, gutter, startX, topY, pageStart, total } = o;
+
+  const filled = (r, c) => pageStart + r * layout.cols + c < total;
+  const cellX = c => startX + c * (cellW + gutter);
+  const cellTop = r => topY - r * cellH - r * gutter;
+  const cellBottom = r => cellTop(r) - cellH;
+
+  if (mode === 'cell'){
+    for (let r = 0; r < layout.rows; r++){
+      for (let c = 0; c < layout.cols; c++){
+        if (!filled(r, c)) continue;
+        page.drawRectangle({
+          x: cellX(c), y: cellBottom(r), width: cellW, height: cellH,
+          borderColor: color, borderWidth: 0.4, borderDashArray: [3, 3]
+        });
+      }
+    }
+    return;
+  }
+
+  // 'between'：只在相邻两格都放了内容的位置画一条分隔线，
+  // 单张占一页、或末页不满时不会画出多余的线
+  for (let r = 0; r < layout.rows - 1; r++){
+    rangeRuns(layout.cols, c => filled(r, c) && filled(r + 1, c)).forEach(([a, b]) => {
+      const y = cellBottom(r) - gutter / 2;
+      page.drawLine({
+        start: { x: cellX(a), y },
+        end:   { x: cellX(b) + cellW, y },
+        thickness: 0.35, color, dashArray: [3, 3]
+      });
+    });
+  }
+  for (let c = 0; c < layout.cols - 1; c++){
+    rangeRuns(layout.rows, r => filled(r, c) && filled(r, c + 1)).forEach(([a, b]) => {
+      const x = cellX(c) + cellW + gutter / 2;
+      page.drawLine({
+        start: { x, y: cellTop(a) },
+        end:   { x, y: cellBottom(b) },
+        thickness: 0.35, color, dashArray: [3, 3]
+      });
+    });
+  }
+}
+
 /* ============================================================
    排版合成
    ============================================================ */
@@ -962,16 +1047,15 @@ async function composePdf(items, opts){
         width: w,
         height: h
       });
-
-      if (opts.cutline){
-        page.drawRectangle({
-          x: x0, y: y0, width: cellW, height: cellH,
-          borderColor: rgb(0.75, 0.78, 0.84),
-          borderWidth: 0.4,
-          borderDashArray: [3, 3]
-        });
-      }
     }
+
+    // 裁切辅助线（每页单独处理，按实际占用情况画）
+    drawCutlines(page, {
+      mode: opts.cutline,
+      pageStart: p * perPage,
+      total: rendered.length,
+      layout, perPage, cellW, cellH, gutter, startX, topY
+    });
   }
 
   const bytes = await outDoc.save();
@@ -1239,7 +1323,7 @@ $('#btn-build-inv').addEventListener('click', async () => {
     dpi: parseInt($('#opt-dpi').value, 10),
     margin: parseFloat($('#opt-margin').value),
     gutter: parseFloat($('#opt-gutter').value),
-    cutline: $('#opt-cutline').checked,
+    cutline: $('#opt-cutline').value,
     onProgress: (cur, total, phase) => {
       const pct = total ? Math.round(cur / total * 100) : 0;
       pfill.style.width = pct + '%';
@@ -1597,7 +1681,7 @@ $('#btn-build-img').addEventListener('click', async () => {
       dpi: 200,
       margin: parseFloat($('#opt-img-margin').value),
       gutter: 0,
-      cutline: false,
+      cutline: $('#opt-img-cutline').value,
       quality: 0.92,
       onProgress: (cur, total, phase) => setLoading(true, `${phase} ${Math.min(cur+1,total)}/${total}`)
     });
